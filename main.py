@@ -603,12 +603,14 @@ class SchedulerPlugin(Star):
                 yield event.plain_result(f"⚠️ 任务 {task.name} 正在运行中，请稍后再试")
                 return
             
-            yield event.plain_result(f"🚀 开始手动执行任务: {task.name}")
+            # yield event.plain_result(f"🚀 开始手动执行任务: {task.name}")
+            logger.info(f"手动执行任务: {task.name}")
             
             # 手动执行任务
             success = await self.scheduler.run_task_manually(task_id)
             if success:
-                yield event.plain_result(f"✅ 任务 {task.name} 已提交执行")
+                logger.info(f"✅ 任务 {task.name} 已提交执行")
+                # yield event.plain_result(f"✅ 任务 {task.name} 已提交执行")
             else:
                 yield event.plain_result(f"❌ 任务 {task.name} 执行失败")
                 
