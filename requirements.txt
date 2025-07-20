@@ -1,0 +1,15 @@
+# 通用定时任务调度插件依赖
+
+# HTTP请求库 - 用于API调用动作
+aiohttp>=3.8.0
+
+# 没有其他外部依赖，使用Python标准库
+# - asyncio: 异步编程
+# - json: JSON处理  
+# - pathlib: 路径处理
+# - datetime: 时间处理
+# - re: 正则表达式
+# - zipfile: 压缩文件
+# - subprocess: 系统命令执行
+# - uuid: UUID生成
+# - random: 随机数生成

@@ -1,0 +1,300 @@
+{
+  "tasks": [
+    {
+      "id": "example_daily_reminder",
+      "name": "每日提醒示例",
+      "description": "演示如何配置每日定时提醒",
+      "enabled": false,
+      "schedule": {
+        "type": "cron",
+        "config": {
+          "expression": "0 9 * * *"
+        },
+        "timezone": "Asia/Shanghai",
+        "enabled": true
+      },
+      "actions": [
+        {
+          "type": "send_message",
+          "config": {
+            "platform": "aiocqhttp",
+            "target_type": "group",
+            "target_id": "123456789",
+            "message": "🌅 早上好！新的一天开始了！\n今日天气: {{weather}}\n今日任务: {{daily_tasks}}"
+          },
+          "conditions": []
+        }
+      ],
+      "group": "reminders",
+      "priority": 1,
+      "tags": ["提醒", "每日"],
+      "retry_count": 3,
+      "on_failure": "log"
+    },
+    {
+      "id": "example_system_backup",
+      "name": "系统备份示例", 
+      "description": "演示如何配置定时备份任务",
+      "enabled": false,
+      "schedule": {
+        "type": "cron",
+        "config": {
+          "expression": "0 2 * * 0"
+        },
+        "timezone": "Asia/Shanghai",
+        "enabled": true
+      },
+      "actions": [
+        {
+          "type": "file_operation",
+          "config": {
+            "operation": "backup",
+            "source_path": "./data",
+            "target_path": "./backups/data_{{timestamp}}.zip",
+            "compress": true
+          },
+          "conditions": []
+        },
+        {
+          "type": "send_message",
+          "config": {
+            "platform": "aiocqhttp",
+            "target_type": "private",
+            "target_id": "admin",
+            "message": "✅ 系统备份完成\n备份文件: {{backup_file}}\n备份大小: {{backup_size}}"
+          },
+          "conditions": [
+            {
+              "type": "previous_action_success",
+              "config": {}
+            }
+          ]
+        }
+      ],
+      "group": "maintenance",
+      "priority": 5,
+      "tags": ["备份", "系统维护"],
+      "retry_count": 2,
+      "on_failure": "notify"
+    },
+    {
+      "id": "example_api_monitor",
+      "name": "API监控示例",
+      "description": "演示如何配置API监控任务",
+      "enabled": false,
+      "schedule": {
+        "type": "interval",
+        "config": {
+          "seconds": 300
+        },
+        "enabled": true
+      },
+      "actions": [
+        {
+          "type": "api_call",
+          "config": {
+            "method": "GET",
+            "url": "https://api.example.com/health",
+            "timeout": 10,
+            "expected_status": 200
+          },
+          "conditions": []
+        },
+        {
+          "type": "send_message",
+          "config": {
+            "platform": "aiocqhttp",
+            "target_type": "group",
+            "target_id": "monitoring",
+            "message": "⚠️ API异常告警\nURL: {{api_url}}\n状态码: {{status_code}}\n响应时间: {{response_time}}ms"
+          },
+          "conditions": [
+            {
+              "type": "previous_action_failed",
+              "config": {}
+            }
+          ]
+        }
+      ],
+      "group": "monitoring",
+      "priority": 3,
+      "tags": ["监控", "API"],
+      "retry_count": 1,
+      "on_failure": "notify"
+    },
+    {
+      "id": "example_news_push",
+      "name": "新闻推送示例",
+      "description": "演示如何配置定时新闻推送",
+      "enabled": false,
+      "schedule": {
+        "type": "cron",
+        "config": {
+          "expression": "0 8,12,18 * * *"
+        },
+        "timezone": "Asia/Shanghai",
+        "enabled": true
+      },
+      "actions": [
+        {
+          "type": "api_call",
+          "config": {
+            "method": "GET",
+            "url": "https://api.news.com/latest",
+            "headers": {
+              "Authorization": "Bearer {{news_api_key}}"
+            }
+          },
+          "conditions": []
+        },
+        {
+          "type": "send_message",
+          "config": {
+            "platform": "aiocqhttp",
+            "target_type": "group",
+            "target_id": "news_subscribers",
+            "message": "📰 最新资讯推送\n\n{{news_content}}\n\n更多详情请访问官网"
+          },
+          "conditions": [
+            {
+              "type": "previous_action_success",
+              "config": {}
+            },
+            {
+              "type": "time_range",
+              "config": {
+                "start_time": "08:00",
+                "end_time": "22:00"
+              }
+            }
+          ]
+        }
+      ],
+      "group": "content",
+      "priority": 2,
+      "tags": ["新闻", "推送"],
+      "retry_count": 2,
+      "on_failure": "log"
+    }
+  ],
+  
+  "action_types": {
+    "send_message": {
+      "description": "发送消息",
+      "required_fields": ["target_type", "target_id", "message"],
+      "optional_fields": ["platform", "delay", "retry_on_fail"],
+      "target_types": ["private", "group", "channel"],
+      "platforms": ["aiocqhttp", "gewechat", "slack", "telegram", "discord", "wecom"]
+    },
+    "api_call": {
+      "description": "调用API接口",
+      "required_fields": ["method", "url"],
+      "optional_fields": ["headers", "data", "timeout", "expected_status"],
+      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH"]
+    },
+    "file_operation": {
+      "description": "文件操作",
+      "required_fields": ["operation"],
+      "optional_fields": ["source_path", "target_path", "compress"],
+      "operations": ["backup", "delete", "move", "copy", "cleanup"]
+    },
+    "command": {
+      "description": "执行系统命令",
+      "required_fields": ["command"],
+      "optional_fields": ["working_dir", "timeout", "capture_output"],
+      "security_warning": "⚠️ 执行系统命令有安全风险，请谨慎配置"
+    }
+  },
+  
+  "schedule_types": {
+    "cron": {
+      "description": "使用Cron表达式定时",
+      "required_fields": ["expression"],
+      "examples": {
+        "0 9 * * *": "每天上午9点",
+        "*/30 * * * *": "每30分钟",
+        "0 0 1 * *": "每月1日",
+        "0 8 * * 1-5": "工作日上午8点"
+      }
+    },
+    "interval": {
+      "description": "按固定间隔执行",
+      "required_fields": ["seconds"],
+      "examples": {
+        "300": "每5分钟",
+        "3600": "每小时",
+        "86400": "每天"
+      }
+    },
+    "once": {
+      "description": "一次性任务",
+      "required_fields": ["datetime"],
+      "examples": {
+        "2024-12-25 09:00:00": "2024年12月25日上午9点执行一次"
+      }
+    },
+    "manual": {
+      "description": "手动触发",
+      "required_fields": [],
+      "note": "只能通过命令手动执行"
+    }
+  },
+  
+  "condition_types": {
+    "previous_action_success": {
+      "description": "前一个动作执行成功",
+      "config": {}
+    },
+    "previous_action_failed": {
+      "description": "前一个动作执行失败",
+      "config": {}
+    },
+    "time_range": {
+      "description": "时间范围条件",
+      "config": {
+        "start_time": "08:00",
+        "end_time": "22:00"
+      }
+    },
+    "weekday": {
+      "description": "星期条件",
+      "config": {
+        "weekdays": [1, 2, 3, 4, 5]
+      }
+    },
+    "variable_equals": {
+      "description": "变量值等于",
+      "config": {
+        "variable": "status",
+        "value": "active"
+      }
+    }
+  },
+  
+  "variables": {
+    "description": "可在任务中使用的变量模板",
+    "system_variables": {
+      "{{timestamp}}": "当前时间戳",
+      "{{date}}": "当前日期 (YYYY-MM-DD)",
+      "{{time}}": "当前时间 (HH:MM:SS)",
+      "{{weekday}}": "星期几",
+      "{{random_id}}": "随机ID"
+    },
+    "custom_variables": {
+      "{{weather}}": "天气信息 (需要配置天气API)",
+      "{{news_content}}": "新闻内容 (需要配置新闻API)",
+      "{{daily_tasks}}": "每日任务列表",
+      "{{backup_file}}": "备份文件路径",
+      "{{backup_size}}": "备份文件大小"
+    }
+  },
+  
+  "settings": {
+    "max_concurrent_tasks": 10,
+    "task_timeout": 300,
+    "log_retention_days": 30,
+    "enable_task_history": true,
+    "notification_on_failure": true,
+    "admin_user_id": "admin"
+  }
+}
