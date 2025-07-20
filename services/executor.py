@@ -486,11 +486,32 @@ class ActionExecutor:
                     "message": "缺少必要参数: command"
                 }
             
+            # 安全检查
+            if not self._is_safe_command(command):
+                return {
+                    "success": False,
+                    "message": "不安全的命令被拒绝执行",
+                    "error": "Command rejected for security reasons"
+                }
+            
+            # 创建安全的执行环境
+            safe_env = {
+                'PATH': '/usr/local/bin:/usr/bin:/bin',  # 限制PATH
+                'HOME': '/tmp',  # 设置安全的HOME目录
+                'USER': 'scheduler',  # 设置用户名
+                'SHELL': '/bin/sh',  # 限制shell
+                'LC_ALL': 'C',  # 设置locale
+            }
+            
             process = await asyncio.create_subprocess_shell(
                 command,
                 cwd=working_dir,
                 stdout=subprocess.PIPE if capture_output else None,
-                stderr=subprocess.PIPE if capture_output else None
+                stderr=subprocess.PIPE if capture_output else None,
+                env=safe_env,  # 使用安全环境变量
+                preexec_fn=None,  # 禁用预执行函数
+                shell=True,  # 使用shell但环境受限
+                limit=1024*1024  # 限制输出大小为1MB
             )
             
             try:
@@ -527,6 +548,79 @@ class ActionExecutor:
                 "error": str(e)
             }
     
+    def _is_safe_command(self, command: str) -> bool:
+        """检查命令是否安全 - 使用白名单机制"""
+        import shlex
+        
+        try:
+            # 解析命令行参数
+            cmd_parts = shlex.split(command)
+            if not cmd_parts:
+                return False
+            
+            base_cmd = cmd_parts[0]
+            
+            # 安全命令白名单
+            SAFE_COMMANDS = {
+                # 基本信息查看
+                'echo', 'printf', 'cat', 'head', 'tail', 'less', 'more',
+                'ls', 'dir', 'pwd', 'whoami', 'id', 'date', 'uptime',
+                'hostname', 'uname', 'df', 'du', 'free', 'ps',
+                
+                # 文件操作（只读）
+                'find', 'locate', 'which', 'whereis', 'file', 'stat',
+                'wc', 'sort', 'uniq', 'cut', 'awk', 'sed', 'grep',
+                
+                # 网络工具（安全的）
+                'ping', 'nslookup', 'dig', 'curl', 'wget',
+                
+                # 系统监控
+                'top', 'htop', 'iostat', 'vmstat', 'netstat',
+                
+                # 压缩解压（只读操作）
+                'gzip', 'gunzip', 'zip', 'unzip', 'tar'
+            }
+            
+            # 检查基础命令是否在白名单中
+            if base_cmd not in SAFE_COMMANDS:
+                logger.warning(f"⚠️ 命令 '{base_cmd}' 不在安全白名单中")
+                return False
+            
+            # 额外的参数安全检查
+            command_full = ' '.join(cmd_parts)
+            
+            # 危险参数模式
+            dangerous_patterns = [
+                '--delete', '--remove', '--force', '-f',
+                '--recursive', '-r', '-rf', '-R',
+                '>', '>>', '|', '&', ';', '&&', '||',
+                '$(', '`', 'sudo', 'su', 'chmod', 'chown',
+                '/etc/', '/bin/', '/sbin/', '/usr/bin/',
+                '/proc/', '/sys/', '/dev/'
+            ]
+            
+            for pattern in dangerous_patterns:
+                if pattern in command_full:
+                    logger.warning(f"⚠️ 命令包含危险参数: {pattern}")
+                    return False
+            
+            # 路径安全检查 - 只允许相对路径和特定安全目录
+            safe_paths = {
+                '/tmp/', '/var/tmp/', './data/', './logs/', './backup/'
+            }
+            
+            # 检查是否包含绝对路径但不在安全目录中
+            for part in cmd_parts[1:]:  # 跳过命令本身
+                if part.startswith('/') and not any(part.startswith(safe) for safe in safe_paths):
+                    logger.warning(f"⚠️ 不安全的绝对路径: {part}")
+                    return False
+            
+            logger.info(f"✅ 命令安全检查通过: {base_cmd}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ 命令安全检查失败: {e}")
+            return False
     
     def _format_size(self, size_bytes: int) -> str:
         """格式化文件大小"""

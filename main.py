@@ -19,6 +19,7 @@ from .services.scheduler import TaskScheduler
 from .services.executor import ActionExecutor
 from .utils.cron_parser import CronParser, IntervalParser, NaturalTimeParser
 from .utils.template import VariableReplacer, ConditionEvaluator
+from .utils.config_validator import ConfigValidator
 
 
 @register("scheduler", "Couei", "通用定时任务调度插件", "1.0.0")
@@ -53,6 +54,7 @@ class SchedulerPlugin(Star):
         self.task_manager = TaskManager()
         self.variable_replacer = VariableReplacer()
         self.condition_evaluator = ConditionEvaluator(self.variable_replacer)
+        self.config_validator = ConfigValidator()  # 配置验证器
         self.action_executor = ActionExecutor(
             context, 
             self.variable_replacer,
@@ -108,10 +110,15 @@ class SchedulerPlugin(Star):
             tasks_config_json = getattr(self.plugin_config, "tasks_config_json", "")
             if tasks_config_json and tasks_config_json.strip():
                 try:
-                    # 直接解析JSON配置
-                    config_data = json.loads(tasks_config_json)
+                    # 使用配置验证器进行安全检查
+                    is_valid, error_msg, config_data = self.config_validator.validate_tasks_config(tasks_config_json)
                     
-                    # 加载任务
+                    if not is_valid:
+                        logger.error(f"❌ 配置验证失败: {error_msg}")
+                        logger.error("配置加载被阻止，插件将使用默认配置运行")
+                        return
+                    
+                    # 验证通过，加载任务
                     for task_data in config_data.get("tasks", []):
                         task = Task.from_dict(task_data)
                         # 注意：这里是同步上下文，我们需要使用同步方法或者延迟加载

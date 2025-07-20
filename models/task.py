@@ -4,6 +4,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import uuid
 import asyncio
+import threading
 from collections import deque
 
 
@@ -159,81 +160,87 @@ class TaskManager:
     
     def __init__(self):
         self.tasks: Dict[str, Task] = {}
-        self.task_history: List[TaskResult] = []
+        self.task_history: deque = deque(maxlen=1000)  # 自动限制历史记录数量
+        self._lock = threading.RLock()  # 可重入锁，支持同一线程多次加锁
     
     def add_task(self, task: Task) -> bool:
         """添加任务"""
-        if task.id in self.tasks:
-            return False
-        self.tasks[task.id] = task
-        return True
+        with self._lock:
+            if task.id in self.tasks:
+                return False
+            self.tasks[task.id] = task
+            return True
     
     def remove_task(self, task_id: str) -> bool:
         """删除任务"""
-        if task_id in self.tasks:
-            del self.tasks[task_id]
-            return True
-        return False
+        with self._lock:
+            if task_id in self.tasks:
+                del self.tasks[task_id]
+                return True
+            return False
     
     def get_task(self, task_id: str) -> Optional[Task]:
         """获取任务"""
-        return self.tasks.get(task_id)
+        with self._lock:
+            return self.tasks.get(task_id)
     
     def list_tasks(self, group: Optional[str] = None, enabled_only: bool = False) -> List[Task]:
         """列出任务"""
-        tasks = list(self.tasks.values())
-        
-        if group:
-            tasks = [t for t in tasks if t.group == group]
-        
-        if enabled_only:
-            tasks = [t for t in tasks if t.enabled and t.schedule.enabled]
-        
-        # 按优先级排序
-        tasks.sort(key=lambda t: t.priority, reverse=True)
-        return tasks
+        with self._lock:
+            tasks = list(self.tasks.values())
+            
+            if group:
+                tasks = [t for t in tasks if t.group == group]
+            
+            if enabled_only:
+                tasks = [t for t in tasks if t.enabled and t.schedule.enabled]
+            
+            # 按优先级排序
+            tasks.sort(key=lambda t: t.priority, reverse=True)
+            return tasks
     
     def update_task_status(self, task_id: str, result: TaskResult):
         """更新任务状态"""
-        task = self.get_task(task_id)
-        if not task:
-            return
-        
-        task.last_run = result.timestamp
-        task.run_count += 1
-        
-        if result.success:
-            task.success_count += 1
-        else:
-            task.fail_count += 1
-        
-        task.updated_at = datetime.now()
-        
-        # 保存执行历史
-        self.task_history.append(result)
-        
-        # 限制历史记录数量
-        if len(self.task_history) > 1000:
-            self.task_history = self.task_history[-1000:]
+        with self._lock:
+            task = self.tasks.get(task_id)
+            if not task:
+                return
+            
+            task.last_run = result.timestamp
+            task.run_count += 1
+            
+            if result.success:
+                task.success_count += 1
+            else:
+                task.fail_count += 1
+            
+            task.updated_at = datetime.now()
+            
+            # 保存执行历史 (deque自动限制数量)
+            self.task_history.append(result)
     
     def get_task_statistics(self) -> Dict[str, Any]:
         """获取任务统计信息"""
-        total_tasks = len(self.tasks)
-        enabled_tasks = len([t for t in self.tasks.values() if t.enabled])
-        running_tasks = len([t for t in self.tasks.values() if t.enabled and t.schedule.enabled])
-        
-        return {
-            "total_tasks": total_tasks,
-            "enabled_tasks": enabled_tasks,
-            "running_tasks": running_tasks,
-            "total_executions": sum(t.run_count for t in self.tasks.values()),
-            "success_rate": self._calculate_success_rate(),
-            "groups": list(set(t.group for t in self.tasks.values())),
-            "recent_failures": len([h for h in self.task_history[-50:] if not h.success])
-        }
+        with self._lock:
+            total_tasks = len(self.tasks)
+            enabled_tasks = len([t for t in self.tasks.values() if t.enabled])
+            running_tasks = len([t for t in self.tasks.values() if t.enabled and t.schedule.enabled])
+            
+            # 获取最近50条历史记录
+            recent_history = list(self.task_history)[-50:] if len(self.task_history) > 50 else list(self.task_history)
+            
+            return {
+                "total_tasks": total_tasks,
+                "enabled_tasks": enabled_tasks,
+                "running_tasks": running_tasks,
+                "total_executions": sum(t.run_count for t in self.tasks.values()),
+                "success_rate": self._calculate_success_rate(),
+                "groups": list(set(t.group for t in self.tasks.values())),
+                "recent_failures": len([h for h in recent_history if not h.success])
+            }
     
     def _calculate_success_rate(self) -> float:
-        """计算成功率"""
+        """计算成功率 (内部方法，调用时已在锁保护下)"""
         total_runs = sum(t.run_count for t in self.tasks.values())
         if total_runs == 0:
             return 100.0
