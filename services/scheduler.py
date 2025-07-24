@@ -130,9 +130,10 @@ class TaskScheduler:
         if interval_seconds <= 0:
             return False
         
-        # 如果从未运行过，立即运行
+        # 如果从未运行过，记录首次检查时间，等待一个完整间隔周期
         if task.last_run is None:
-            return True
+            task.last_run = now  # 记录首次检查时间，作为下一次运行的基准
+            return False  # 第一次不立即运行
         
         # 检查是否过了间隔时间
         next_run = task.last_run + timedelta(seconds=interval_seconds)
@@ -234,10 +235,19 @@ class TaskScheduler:
     async def _send_failure_notification(self, task: Task):
         """发送失败通知"""
         try:
-            # 这里可以发送通知消息
             notification_message = f"⚠️ 任务执行失败\n任务名称: {task.name}\n失败次数: {task.fail_count}\n最后错误: 请查看日志"
             logger.warning(notification_message)
-            # TODO: 实际发送消息到管理员
+            
+            # 实际发送消息到管理员
+            if hasattr(self, 'executor_callback') and self.executor_callback:
+                await self.executor_callback({
+                    "type": "send_message",
+                    "config": {
+                        "message": notification_message,
+                        "target_type": "user",
+                        "target_id": getattr(self, 'admin_id', None) or "admin"
+                    }
+                })
         except Exception as e:
             logger.error(f"发送失败通知时出错: {e}")
     

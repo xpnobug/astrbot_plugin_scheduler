@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, register, StarTools
 from astrbot.api import logger, AstrBotConfig
 from astrbot.core.utils.session_waiter import session_waiter, SessionController
 
@@ -34,7 +34,7 @@ class SchedulerPlugin(Star):
         self.astrbot_config = config
         
         # 初始化数据目录
-        self.data_dir = Path("data/scheduler")
+        self.data_dir = StarTools.get_data_dir()
         self.data_dir.mkdir(exist_ok=True)
         
         # 配置文件路径
@@ -93,7 +93,10 @@ class SchedulerPlugin(Star):
             if hasattr(self, 'scheduler'):
                 await self.scheduler.stop()
                 
-            logger.info("定时任务插件已安全终止")
+            # 保存任务配置
+            self._save_tasks()
+                
+            logger.info("通用定时任务调度插件已安全卸载")
             
         except Exception as e:
             logger.error(f"插件终止时出错: {e}")
@@ -347,59 +350,6 @@ class SchedulerPlugin(Star):
         task = Task.from_dict(monitor_task)
         if self.task_manager.add_task(task):
             logger.info("已创建快速监控任务")
-    
-    def _convert_config_to_task(self, config_task: dict) -> dict:
-        """将配置界面的任务格式转换为内部Task格式"""
-        # 解析调度配置
-        schedule_type = config_task.get("schedule_type", "manual")
-        schedule_config_str = config_task.get("schedule_config", "")
-        schedule_config = {}
-        
-        if schedule_type == "cron" and schedule_config_str:
-            schedule_config = {"expression": schedule_config_str}
-        elif schedule_type == "interval" and schedule_config_str:
-            # 解析间隔时间
-            seconds = self.interval_parser.parse_interval(schedule_config_str)
-            if seconds:
-                schedule_config = {"seconds": seconds}
-        elif schedule_type == "once" and schedule_config_str:
-            schedule_config = {"datetime": schedule_config_str}
-        
-        # 解析动作配置
-        action_config_str = config_task.get("action_config", "{}")
-        try:
-            action_config = json.loads(action_config_str) if action_config_str else {}
-        except json.JSONDecodeError:
-            action_config = {}
-        
-        # 构建完整的任务配置
-        task_data = {
-            "id": config_task.get("id", config_task.get("name", "").lower().replace(" ", "_")),
-            "name": config_task.get("name", "未命名任务"),
-            "description": config_task.get("description", ""),
-            "enabled": config_task.get("enabled", True),
-            "schedule": {
-                "type": schedule_type,
-                "config": schedule_config,
-                "timezone": "Asia/Shanghai",
-                "enabled": config_task.get("enabled", True)
-            },
-            "actions": [
-                {
-                    "type": config_task.get("action_type", "send_message"),
-                    "config": action_config,
-                    "conditions": []
-                }
-            ],
-            "group": config_task.get("group", "config"),
-            "priority": config_task.get("priority", 1),
-            "retry_count": config_task.get("retry_count", 3),
-            "on_failure": config_task.get("on_failure", "log"),
-            "created_by": "config_ui",
-            "tags": ["配置界面创建"]
-        }
-        
-        return task_data
     
     def _save_tasks(self):
         """保存任务配置"""
@@ -2535,12 +2485,3 @@ timeout: 60
             return "手动触发"
         else:
             return "未知调度类型"
-    
-    async def terminate(self):
-        """插件卸载时调用"""
-        try:
-            await self.scheduler.stop()
-            self._save_tasks()
-            logger.info("通用定时任务调度插件已安全卸载")
-        except Exception as e:
-            logger.error(f"插件卸载时错误: {e}")

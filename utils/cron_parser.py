@@ -283,12 +283,15 @@ class IntervalParser:
 class NaturalTimeParser:
     """自然语言时间解析器"""
     
+    # 周日映射字典
+    WEEKDAY_MAP = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 0}
+    
     TIME_PATTERNS = {
         r'每天(\d{1,2})点(\d{1,2})分?': lambda m: f"{m.group(2)} {m.group(1)} * * *",
         r'每天(\d{1,2})点': lambda m: f"0 {m.group(1)} * * *",
         r'每小时': lambda m: "0 * * * *",
         r'每(\d+)分钟': lambda m: f"*/{m.group(1)} * * * *",
-        r'每周([一二三四五六日])(\d{1,2})点': lambda m: f"0 {m.group(2)} * * {['一', '二', '三', '四', '五', '六', '日'].index(m.group(1)) + 1}",
+        r'每周([一二三四五六日])(\d{1,2})点': lambda m: f"0 {m.group(2)} * * {NaturalTimeParser.WEEKDAY_MAP[m.group(1)]}",
         r'每月(\d{1,2})日(\d{1,2})点': lambda m: f"0 {m.group(2)} {m.group(1)} * *",
     }
     

@@ -161,7 +161,7 @@ class TaskManager:
     def __init__(self):
         self.tasks: Dict[str, Task] = {}
         self.task_history: deque = deque(maxlen=1000)  # 自动限制历史记录数量
-        self._lock = threading.RLock()  # 可重入锁，支持同一线程多次加锁
+        self._lock = threading.RLock()  # 使用线程锁，保持同步方法
     
     def add_task(self, task: Task) -> bool:
         """添加任务"""

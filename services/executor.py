@@ -1,8 +1,11 @@
 """任务执行器"""
 import asyncio
 import json
+import os
 import subprocess
+import shlex
 import shutil
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -526,14 +529,22 @@ class ActionExecutor:
                 'LC_ALL': 'C',  # 设置locale
             }
             
-            process = await asyncio.create_subprocess_shell(
-                command,
+            # 安全地解析命令，避免shell注入
+            try:
+                cmd_parts = shlex.split(command)
+            except ValueError as e:
+                return {
+                    "success": False,
+                    "message": f"命令解析失败: {str(e)}",
+                    "error": "Invalid command syntax"
+                }
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd_parts,
                 cwd=working_dir,
                 stdout=subprocess.PIPE if capture_output else None,
                 stderr=subprocess.PIPE if capture_output else None,
                 env=safe_env,  # 使用安全环境变量
-                preexec_fn=None,  # 禁用预执行函数
-                shell=True,  # 使用shell但环境受限
                 limit=1024*1024  # 限制输出大小为1MB
             )
             
@@ -819,24 +830,25 @@ class ActionExecutor:
                     formatted_message = formatted_message.replace(placeholder, str(value))
             
             # 发送图片消息
-            send_result = await self._send_direct_image_message(config, str(temp_file_path), formatted_message)
-            
-            # 清理临时文件
             try:
-                os.unlink(temp_file_path)
-                logger.info(f"   🗑️ 已清理临时文件: {temp_file_path}")
-            except Exception as e:
-                logger.warning(f"   ⚠️ 清理临时文件失败: {e}")
-            
-            # 更新结果信息
-            if send_result and send_result.get("success"):
-                result["message"] += f" | 已发送图片到目标聊天"
-                result["data"]["sent_image_size"] = len(image_data)
-                result["data"]["image_format"] = extension[1:]  # 去掉点号
-            else:
-                result["message"] += f" | 图片发送失败: {send_result.get('message', '') if send_result else '未知错误'}"
-            
-            return send_result
+                send_result = await self._send_direct_image_message(config, str(temp_file_path), formatted_message)
+                
+                # 更新结果信息
+                if send_result and send_result.get("success"):
+                    result["message"] += f" | 已发送图片到目标聊天"
+                    result["data"]["sent_image_size"] = len(image_data)
+                    result["data"]["image_format"] = extension[1:]  # 去掉点号
+                else:
+                    result["message"] += f" | 图片发送失败: {send_result.get('message', '') if send_result else '未知错误'}"
+                
+                return send_result
+            finally:
+                # 确保临时文件始终被清理
+                try:
+                    os.unlink(temp_file_path)
+                    logger.info(f"   🗑️ 已清理临时文件: {temp_file_path}")
+                except Exception as e:
+                    logger.warning(f"   ⚠️ 清理临时文件失败: {e}")
             
         except Exception as e:
             logger.error(f"处理直接图片响应失败: {e}", exc_info=True)
